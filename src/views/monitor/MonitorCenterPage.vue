@@ -224,6 +224,45 @@ const moduleConfigs = {
       aliases: ["amplitude", "vibrationValue", "frequency", "acceleration"],
     },
   },
+  vibratingWire: {
+    label: "振弦原始数据",
+    shortLabel: "振弦",
+    component: "VibratingWire",
+    desc: "振弦采集仪原始接入与查询",
+    version: "1.0",
+    category: "direct",
+    metric: {
+      key: "frequency",
+      label: "频率",
+      aliases: ["frequency", "temperature", "tension", "strainValue"],
+    },
+  },
+  fiber: {
+    label: "光纤原始数据",
+    shortLabel: "光纤",
+    component: "Fiber",
+    desc: "OS-265 光纤原始入口，仅做结构接入",
+    version: "1.0",
+    category: "direct",
+    metric: {
+      key: "rawValue",
+      label: "原始值",
+      aliases: ["rawValue", "wavelength", "wavelengthShift", "intensity"],
+    },
+  },
+  vibrationDat: {
+    label: "振动DAT",
+    shortLabel: "DAT",
+    component: "VibrationDat",
+    desc: "振动 DAT 文件级接入与查询",
+    version: "1.0",
+    category: "direct",
+    metric: {
+      key: "fileSize",
+      label: "文件大小",
+      aliases: ["fileSize", "sampleRate", "channelCount", "pointCount", "durationSeconds"],
+    },
+  },
   deflection: {
     label: "挠度数据（mm）",
     shortLabel: "挠度",
@@ -258,7 +297,7 @@ const categories = [
 ];
 
 const moduleMap = {
-  direct: ["displacement", "acceleration", "strain", "vibration"],
+  direct: ["displacement", "acceleration", "strain", "vibration", "vibratingWire", "fiber", "vibrationDat"],
   calc: ["deflection", "stress"],
 };
 
@@ -267,6 +306,9 @@ const allModules = computed(() => [
   { key: "acceleration", ...moduleConfigs.acceleration },
   { key: "strain", ...moduleConfigs.strain },
   { key: "vibration", ...moduleConfigs.vibration },
+  { key: "vibratingWire", ...moduleConfigs.vibratingWire },
+  { key: "fiber", ...moduleConfigs.fiber },
+  { key: "vibrationDat", ...moduleConfigs.vibrationDat },
   { key: "deflection", ...moduleConfigs.deflection },
   { key: "stress", ...moduleConfigs.stress },
 ]);
@@ -276,6 +318,9 @@ const componentsMap = {
   Acceleration: defineAsyncComponent(() => import("./acceleration/AccelerationMonitorPage.vue")),
   Strain: defineAsyncComponent(() => import("./strain/StrainMonitorPage.vue")),
   Vibration: defineAsyncComponent(() => import("./vibration/VibrationMonitorPage.vue")),
+  VibratingWire: defineAsyncComponent(() => import("./vibrating-wire/VibratingWireMonitorPage.vue")),
+  Fiber: defineAsyncComponent(() => import("./fiber/FiberMonitorPage.vue")),
+  VibrationDat: defineAsyncComponent(() => import("./vibration-dat/VibrationDatMonitorPage.vue")),
   Deflection: defineAsyncComponent(() => import("./deflection/DeflectionMonitorPage.vue")),
   Stress: defineAsyncComponent(() => import("./stress/StressMonitorPage.vue")),
 };
@@ -297,6 +342,9 @@ const overviewData = reactive({
   acceleration: [],
   strain: [],
   vibration: [],
+  vibratingWire: [],
+  fiber: [],
+  vibrationDat: [],
   deflection: [],
   stress: [],
 });
