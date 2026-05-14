@@ -20,16 +20,14 @@ function buildHeaders() {
   return (token ? { Authorization: `Bearer ${token}` } : {});
 }
 
-export function getVibrationLatest(params) {
-  return axios.get("/api/data/vibration/latest", {
-    params,
+export function getVibrationLatest(data) {
+  return axios.post("/api/data/vibration/latest", data, {
     headers: buildHeaders(),
   });
 }
 
-export function getVibrationHistory(params) {
-  return axios.get("/api/data/vibration/history", {
-    params,
+export function getVibrationHistory(data) {
+  return axios.post("/api/data/vibration/history", data, {
     headers: buildHeaders(),
   });
 }

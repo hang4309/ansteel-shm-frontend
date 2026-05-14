@@ -20,16 +20,14 @@ function buildHeaders() {
   return (token ? { Authorization: `Bearer ${token}` } : {});
 }
 
-export function getDisplacementLatest(params) {
-  return axios.get("/api/data/displacement/latest", {
-    params,
+export function getDisplacementLatest(data) {
+  return axios.post("/api/data/displacement/latest", data, {
     headers: buildHeaders(),
   });
 }
 
-export function getDisplacementHistory(params) {
-  return axios.get("/api/data/displacement/history", {
-    params,
+export function getDisplacementHistory(data) {
+  return axios.post("/api/data/displacement/history", data, {
     headers: buildHeaders(),
   });
 }

@@ -20,16 +20,14 @@ function buildHeaders() {
   return (token ? { Authorization: `Bearer ${token}` } : {});
 }
 
-export function getStressLatest(params) {
-  return axios.get("/api/data/stress/latest", {
-    params,
+export function getStressLatest(data) {
+  return axios.post("/api/data/stress/latest", data, {
     headers: buildHeaders(),
   });
 }
 
-export function getStressHistory(params) {
-  return axios.get("/api/data/stress/history", {
-    params,
+export function getStressHistory(data) {
+  return axios.post("/api/data/stress/history", data, {
     headers: buildHeaders(),
   });
 }
