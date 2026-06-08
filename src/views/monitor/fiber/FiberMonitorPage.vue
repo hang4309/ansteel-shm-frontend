@@ -14,7 +14,7 @@
       <div class="section-header">
         <div>
           <h3 class="section-title">OS265 实时波长曲线</h3>
-          <p class="section-subtitle">最近 5 分钟，每 2 秒自动刷新</p>
+          <p class="section-subtitle">最近 5 分钟，2 秒自动刷新，异常跳点仅在展示层过滤，原始数据仍保留。</p>
         </div>
         <span class="section-tag">realtime</span>
       </div>
@@ -33,8 +33,16 @@
           <div class="data-value">{{ latestData?.collectTime || "-" }}</div>
         </div>
         <div class="data-item">
-          <div class="data-label">历史点数</div>
+          <div class="data-label">原始点数</div>
+          <div class="data-value">{{ chartRawSeries.length }}</div>
+        </div>
+        <div class="data-item">
+          <div class="data-label">曲线有效点数</div>
           <div class="data-value">{{ chartSeries.length }}</div>
+        </div>
+        <div class="data-item">
+          <div class="data-label">已过滤异常点数</div>
+          <div class="data-value">{{ chartFilteredCount }}</div>
         </div>
       </div>
 
@@ -93,7 +101,10 @@
 
         <div class="chart-meta">
           <span>sensorId：{{ realtimeSensorId }}</span>
-          <span>点数：{{ chartSeries.length }}</span>
+          <span>原始点数：{{ chartRawSeries.length }}</span>
+          <span>有效点数：{{ chartSeries.length }}</span>
+          <span>已过滤异常点：{{ chartFilteredCount }}</span>
+          <span>中位数：{{ chartMedianDisplay }}</span>
           <span>最小值：{{ chartStats.min }}</span>
           <span>最大值：{{ chartStats.max }}</span>
           <span>刷新时间：{{ lastRefreshTime || "-" }}</span>
@@ -110,6 +121,7 @@
         <h3 class="section-title">最新数据</h3>
         <span class="section-tag">latest</span>
       </div>
+      <div v-if="latestIsOutlier" class="warning-message">最新值疑似异常，请等待下一条正常采样。</div>
       <div v-if="latestData" class="data-grid">
         <div class="data-item">
           <div class="data-label">传感器ID</div>
@@ -164,10 +176,15 @@
               <th>波长变化</th>
               <th>强度</th>
               <th>采集时间</th>
+              <th>标记</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(item, index) in historyList" :key="`${item.sensorId || 'row'}-${index}`">
+            <tr
+              v-for="(item, index) in historyList"
+              :key="`${item.sensorId || 'row'}-${index}`"
+              :class="{ 'outlier-row': isHistoryOutlier(item) }"
+            >
               <td>{{ item.sensorId || "-" }}</td>
               <td>{{ item.deviceNo || "-" }}</td>
               <td>{{ item.fiberNo || "-" }}</td>
@@ -176,6 +193,10 @@
               <td>{{ formatDisplayValue(item.wavelengthShift) }}</td>
               <td>{{ formatDisplayValue(item.intensity) }}</td>
               <td>{{ item.collectTime || "-" }}</td>
+              <td>
+                <span v-if="isHistoryOutlier(item)" class="outlier-badge">异常跳点</span>
+                <span v-else>-</span>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -197,6 +218,8 @@ defineOptions({
 const DEFAULT_SENSOR_ID = "FBG-STRAIN-CH2";
 const REALTIME_REFRESH_INTERVAL = 2000;
 const REALTIME_WINDOW_MINUTES = 5;
+const OUTLIER_THRESHOLD_NM = 1.0;
+const MIN_CHART_RANGE_NM = 0.02;
 
 const loading = ref(false);
 const realtimeLoading = ref(false);
@@ -228,24 +251,72 @@ const latestWaveDisplay = computed(() => {
   return formatDisplayValue(value);
 });
 
+const chartRawSeries = computed(() => {
+  return buildNumericSeries(realtimeHistoryList.value);
+});
+
+const chartMedian = computed(() => {
+  return calculateMedian(chartRawSeries.value.map((item) => item.value));
+});
+
+const chartMedianDisplay = computed(() => {
+  return chartMedian.value === null ? "-" : formatNumber(chartMedian.value);
+});
+
 const chartSeries = computed(() => {
-  return realtimeHistoryList.value
-    .map((item, index) => {
-      const value = pickWaveValue(item);
+  if (chartMedian.value === null) {
+    return chartRawSeries.value;
+  }
 
-      if (value === null) {
-        return null;
-      }
+  return chartRawSeries.value.filter((item) => !isOutlierValue(item.value, chartMedian.value));
+});
 
-      return {
-        key: `${item.sensorId || "fiber"}-${item.collectTime || index}-${index}`,
-        value,
-        collectTime: item.collectTime || "",
-        shortTime: formatShortTime(item.collectTime),
-      };
-    })
-    .filter(Boolean)
-    .sort((a, b) => String(a.collectTime).localeCompare(String(b.collectTime)));
+const chartFilteredCount = computed(() => {
+  return Math.max(chartRawSeries.value.length - chartSeries.value.length, 0);
+});
+
+const historyMedian = computed(() => {
+  const series = buildNumericSeries(historyList.value);
+  return calculateMedian(series.map((item) => item.value));
+});
+
+const latestIsOutlier = computed(() => {
+  const value = pickWaveValue(latestData.value);
+
+  if (value === null || chartMedian.value === null) {
+    return false;
+  }
+
+  return isOutlierValue(value, chartMedian.value);
+});
+
+const chartBounds = computed(() => {
+  if (chartSeries.value.length === 0) {
+    return {
+      min: 0,
+      max: 1,
+    };
+  }
+
+  const values = chartSeries.value.map((item) => item.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue;
+
+  if (range < MIN_CHART_RANGE_NM) {
+    const center = (minValue + maxValue) / 2;
+    return {
+      min: center - MIN_CHART_RANGE_NM / 2,
+      max: center + MIN_CHART_RANGE_NM / 2,
+    };
+  }
+
+  const padding = Math.max(range * 0.1, MIN_CHART_RANGE_NM / 2);
+
+  return {
+    min: minValue - padding,
+    max: maxValue + padding,
+  };
 });
 
 const chartStats = computed(() => {
@@ -273,9 +344,8 @@ const chartPoints = computed(() => {
   const endX = 930;
   const startY = 42;
   const endY = 252;
-  const values = chartSeries.value.map((item) => item.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  const minValue = chartBounds.value.min;
+  const maxValue = chartBounds.value.max;
   const range = maxValue - minValue || 1;
   const stepX = chartSeries.value.length > 1 ? (endX - startX) / (chartSeries.value.length - 1) : 0;
 
@@ -313,18 +383,14 @@ const chartYLabels = computed(() => {
     return [];
   }
 
-  const values = chartSeries.value.map((item) => item.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  const minValue = chartBounds.value.min;
+  const maxValue = chartBounds.value.max;
   const midValue = (minValue + maxValue) / 2;
-  const minY = Math.max(...chartPoints.value.map((point) => point.y));
-  const maxY = Math.min(...chartPoints.value.map((point) => point.y));
-  const midY = (minY + maxY) / 2;
 
   return [
-    { key: "max", text: formatNumber(maxValue), y: maxY },
-    { key: "mid", text: formatNumber(midValue), y: midY },
-    { key: "min", text: formatNumber(minValue), y: minY },
+    { key: "max", text: formatNumber(maxValue), y: 42 },
+    { key: "mid", text: formatNumber(midValue), y: 147 },
+    { key: "min", text: formatNumber(minValue), y: 252 },
   ];
 });
 
@@ -360,10 +426,60 @@ function unwrap(response) {
   return data && typeof data === "object" && "data" in data ? data.data : data;
 }
 
+function buildNumericSeries(records) {
+  return records
+    .map((item, index) => {
+      const value = pickWaveValue(item);
+
+      if (value === null) {
+        return null;
+      }
+
+      return {
+        key: `${item.sensorId || "fiber"}-${item.collectTime || index}-${index}`,
+        value,
+        collectTime: item.collectTime || "",
+        shortTime: formatShortTime(item.collectTime),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => String(a.collectTime).localeCompare(String(b.collectTime)));
+}
+
 function pickWaveValue(item) {
   const candidate = item?.rawValue !== null && item?.rawValue !== undefined && item?.rawValue !== "" ? item.rawValue : item?.wavelength;
   const numericValue = Number(candidate);
   return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function calculateMedian(values) {
+  const sortedValues = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+
+  if (sortedValues.length === 0) {
+    return null;
+  }
+
+  const midIndex = Math.floor(sortedValues.length / 2);
+
+  if (sortedValues.length % 2 === 0) {
+    return (sortedValues[midIndex - 1] + sortedValues[midIndex]) / 2;
+  }
+
+  return sortedValues[midIndex];
+}
+
+function isOutlierValue(value, median) {
+  return Number.isFinite(value) && Number.isFinite(median) && Math.abs(value - median) > OUTLIER_THRESHOLD_NM;
+}
+
+function isHistoryOutlier(item) {
+  const value = pickWaveValue(item);
+
+  if (value === null || historyMedian.value === null) {
+    return false;
+  }
+
+  return isOutlierValue(value, historyMedian.value);
 }
 
 function formatNumber(value) {
@@ -580,6 +696,16 @@ onUnmounted(() => {
   color: #dc2626;
 }
 
+.warning-message {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #f59e0b;
+  border-radius: 10px;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 13px;
+}
+
 .empty-block {
   min-height: 92px;
   display: flex;
@@ -662,6 +788,21 @@ onUnmounted(() => {
 
 .history-table th {
   background: #fafafa;
+}
+
+.outlier-row {
+  background: #fffbeb;
+}
+
+.outlier-badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 12px;
 }
 
 @media (max-width: 1280px) {
